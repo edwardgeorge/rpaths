@@ -21,7 +21,7 @@ fn dir_entries(path: &Path) -> Vec<DirEntry> {
         .unwrap_or_else(|_| vec![])
 }
 
-fn make_canonical<'a>(dir: &Path, path: PathBuf) -> Option<PathBuf> {
+fn make_canonical(dir: &Path, path: PathBuf) -> Option<PathBuf> {
     if path.is_absolute() {
         if path.exists() {
             Some(path)
