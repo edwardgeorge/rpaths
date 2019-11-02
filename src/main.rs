@@ -1,4 +1,4 @@
-use std::fs::{read_dir, read_link};
+use std::fs::{read_dir, read_link, DirEntry};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
@@ -13,20 +13,26 @@ fn combine_paths(inp: &Vec<PathBuf>, sep: &str) -> String {
     x[..].join(sep)
 }
 
-fn dir_links(path: &Path) -> Vec<PathBuf> {
+fn dir_entries(path: &Path) -> Vec<DirEntry> {
     read_dir(path)
         .and_then(|entries| {
-            let mut paths = Vec::new();
-            for entry in entries {
-                let entry = entry?;
-                match read_link(entry.path()).and_then(|x| path.join(x).canonicalize()) {
-                    Ok(p) => paths.push(p),
-                    Err(_) => (),
-                }
-            }
-            Ok(paths)
+            let mut x: Vec<_> = entries.flatten().collect();
+            x.sort_unstable_by(|a, b| a.path().cmp(&b.path()));
+            Ok(x)
         })
         .unwrap_or_else(|_| vec![])
+}
+
+fn dir_links(path: &Path) -> Vec<PathBuf> {
+    let entries = dir_entries(path);
+    let mut paths = Vec::new();
+    for entry in entries {
+        match read_link(entry.path()).and_then(|x| path.join(x).canonicalize()) {
+            Ok(p) => paths.push(p),
+            Err(_) => (),
+        }
+    }
+    return paths;
 }
 
 fn main() -> io::Result<()> {
