@@ -13,8 +13,7 @@ fn combine_paths(inp: &Vec<PathBuf>, sep: &str) -> String {
     x[..].join(sep)
 }
 
-fn dir_links(dir: &Path) -> Vec<PathBuf> {
-    let path = Path::new(dir);
+fn dir_links(path: &Path) -> Vec<PathBuf> {
     read_dir(path)
         .and_then(|entries| {
             let mut paths = Vec::new();
