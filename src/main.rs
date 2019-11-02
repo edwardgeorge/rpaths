@@ -1,16 +1,15 @@
-use std::fs::{read_dir, read_link, DirEntry};
-use std::io;
+use std::fs::{read_dir, read_link, DirEntry, File};
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
 
+use clap::{App, Arg};
 use expanduser::expanduser;
 
-fn combine_paths(inp: &Vec<PathBuf>, sep: &str) -> String {
-    let x: Vec<String> = inp
-        .iter()
+fn pathbufs_to_strings(inp: &Vec<PathBuf>, sep: &str) -> Vec<String> {
+    inp.iter()
         .map(|x| x.to_string_lossy().into_owned())
-        .collect();
-    x[..].join(sep)
+        .collect()
 }
 
 fn dir_entries(path: &Path) -> Vec<DirEntry> {
@@ -53,10 +52,48 @@ fn dir_links(path: &Path) -> Vec<PathBuf> {
     return paths;
 }
 
+fn file_entries(path: &Path) -> Vec<String> {
+    File::open(path)
+        .and_then(|file| {
+            let mut entries = Vec::new();
+            let reader = io::BufReader::new(file);
+            for line in reader.lines() {
+                let line = line?;
+                entries.push(line);
+            }
+            Ok(entries)
+        })
+        .unwrap_or_else(|_| vec![])
+}
+
 fn main() -> io::Result<()> {
+    let matches = App::new("rpaths")
+        .arg(
+            Arg::with_name("system")
+                .short("s")
+                .long("system")
+                .help(
+                    "includes system paths. emulates behaviour of OSX path_helper, appending paths",
+                )
+                .takes_value(false)
+                .required(false)
+                .multiple(false),
+        )
+        .get_matches();
+    let foo = if matches.is_present("system") {
+        file_entries(Path::new("/etc/paths"))
+    } else {
+        vec![]
+    };
     let path = expanduser("~/.paths.d")?;
     let paths = dir_links(path.as_path());
-    let res = combine_paths(&paths, ":");
-    println!("{}", res);
+    let res = pathbufs_to_strings(&paths, ":");
+    // res.append(&mut foo);
+    let r = vec![res, foo]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(":");
+    println!("{}", r);
     Ok(())
 }
