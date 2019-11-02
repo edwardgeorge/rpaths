@@ -6,10 +6,9 @@ use std::vec::Vec;
 use clap::{App, Arg};
 use expanduser::expanduser;
 
-fn pathbufs_to_strings(inp: &Vec<PathBuf>, sep: &str) -> Vec<String> {
-    inp.iter()
-        .map(|x| x.to_string_lossy().into_owned())
-        .collect()
+fn is_symlink(path: &Path) -> io::Result<bool> {
+    let ft = path.symlink_metadata()?.file_type();
+    Ok(ft.is_symlink())
 }
 
 fn dir_entries(path: &Path) -> Vec<DirEntry> {
@@ -37,33 +36,28 @@ fn make_canonical<'a>(dir: &Path, path: PathBuf) -> Option<PathBuf> {
     }
 }
 
-fn dir_links(path: &Path) -> Vec<PathBuf> {
-    let entries = dir_entries(path);
-    let mut paths = Vec::new();
-    for entry in entries {
-        match read_link(entry.path())
-            .ok()
-            .and_then(|x| make_canonical(path, x))
-        {
-            Some(p) => paths.push(p),
-            None => (),
-        }
-    }
-    return paths;
-}
-
-fn dir_file_entries(path: &Path) -> Vec<String> {
+fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
     let entries = dir_entries(path);
     let mut paths = Vec::new();
     for entry in entries {
         let p = entry.path();
-        let mut fentries = file_entries(&p);
-        paths.append(&mut fentries);
+        if is_symlink(&p)? {
+            match read_link(entry.path())
+                .ok()
+                .and_then(|x| make_canonical(path, x))
+            {
+                Some(p) => paths.push(p.to_string_lossy().into_owned()),
+                None => (),
+            }
+        } else if p.is_file() {
+            paths.append(&mut file_paths(&p));
+        } else {
+        }
     }
-    return paths;
+    Ok(paths)
 }
 
-fn file_entries(path: &Path) -> Vec<String> {
+fn file_paths(path: &Path) -> Vec<String> {
     File::open(path)
         .and_then(|file| {
             let mut entries = Vec::new();
@@ -91,22 +85,25 @@ fn main() -> io::Result<()> {
                 .multiple(false),
         )
         .get_matches();
-    let mut syspaths = if matches.is_present("system") {
-        let mut r = file_entries(Path::new("/etc/paths"));
-        r.append(&mut dir_file_entries(Path::new("/etc/paths.d")));
-        r
-    } else {
-        vec![]
-    };
+    let sys = matches.is_present("system");
     let path = expanduser("~/.paths.d")?;
-    let paths = dir_links(path.as_path());
-    let mut res = pathbufs_to_strings(&paths, ":");
-    res.append(&mut syspaths);
-    // let r = vec![res, foo]
-    //     .into_iter()
-    //     .flatten()
-    //     .collect::<Vec<_>>()
-    //     .join(":");
-    println!("{}", res.join(":"));
+    let result = vec![
+        dir_paths(&path)?,
+        if sys {
+            dir_paths(Path::new("/etc/paths.d"))?
+        } else {
+            vec![]
+        },
+        if sys {
+            file_paths(Path::new("/etc/paths"))
+        } else {
+            vec![]
+        },
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(":");
+    println!("{}", result);
     Ok(())
 }
