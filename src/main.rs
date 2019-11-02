@@ -52,6 +52,17 @@ fn dir_links(path: &Path) -> Vec<PathBuf> {
     return paths;
 }
 
+fn dir_file_entries(path: &Path) -> Vec<String> {
+    let entries = dir_entries(path);
+    let mut paths = Vec::new();
+    for entry in entries {
+        let p = entry.path();
+        let mut fentries = file_entries(&p);
+        paths.append(&mut fentries);
+    }
+    return paths;
+}
+
 fn file_entries(path: &Path) -> Vec<String> {
     File::open(path)
         .and_then(|file| {
@@ -80,20 +91,22 @@ fn main() -> io::Result<()> {
                 .multiple(false),
         )
         .get_matches();
-    let foo = if matches.is_present("system") {
-        file_entries(Path::new("/etc/paths"))
+    let mut syspaths = if matches.is_present("system") {
+        let mut r = file_entries(Path::new("/etc/paths"));
+        r.append(&mut dir_file_entries(Path::new("/etc/paths.d")));
+        r
     } else {
         vec![]
     };
     let path = expanduser("~/.paths.d")?;
     let paths = dir_links(path.as_path());
-    let res = pathbufs_to_strings(&paths, ":");
-    // res.append(&mut foo);
-    let r = vec![res, foo]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(":");
-    println!("{}", r);
+    let mut res = pathbufs_to_strings(&paths, ":");
+    res.append(&mut syspaths);
+    // let r = vec![res, foo]
+    //     .into_iter()
+    //     .flatten()
+    //     .collect::<Vec<_>>()
+    //     .join(":");
+    println!("{}", res.join(":"));
     Ok(())
 }
