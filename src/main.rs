@@ -71,6 +71,27 @@ fn file_paths(path: &Path) -> Vec<String> {
         .unwrap_or_else(|_| vec![])
 }
 
+fn find_paths(include_sys: bool) -> io::Result<Vec<String>> {
+    let path = expanduser("~/.paths.d")?;
+    let result = vec![
+        dir_paths(&path)?,
+        if include_sys {
+            dir_paths(Path::new("/etc/paths.d"))?
+        } else {
+            vec![]
+        },
+        if include_sys {
+            file_paths(Path::new("/etc/paths"))
+        } else {
+            vec![]
+        },
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    Ok(result)
+}
+
 fn main() -> io::Result<()> {
     let matches = App::new("rpaths")
         .arg(
@@ -86,24 +107,7 @@ fn main() -> io::Result<()> {
         )
         .get_matches();
     let sys = matches.is_present("system");
-    let path = expanduser("~/.paths.d")?;
-    let result = vec![
-        dir_paths(&path)?,
-        if sys {
-            dir_paths(Path::new("/etc/paths.d"))?
-        } else {
-            vec![]
-        },
-        if sys {
-            file_paths(Path::new("/etc/paths"))
-        } else {
-            vec![]
-        },
-    ]
-    .into_iter()
-    .flatten()
-    .collect::<Vec<_>>()
-    .join(":");
-    println!("{}", result);
+    let res = find_paths(sys)?;
+    println!("{}", res.join(":"));
     Ok(())
 }
