@@ -23,13 +23,31 @@ fn dir_entries(path: &Path) -> Vec<DirEntry> {
         .unwrap_or_else(|_| vec![])
 }
 
+fn make_canonical<'a>(dir: &Path, path: PathBuf) -> Option<PathBuf> {
+    if path.is_absolute() {
+        if path.exists() {
+            Some(path)
+        } else {
+            None
+        }
+    } else {
+        match dir.join(path).canonicalize() {
+            Ok(p) => Some(p),
+            Err(_) => None,
+        }
+    }
+}
+
 fn dir_links(path: &Path) -> Vec<PathBuf> {
     let entries = dir_entries(path);
     let mut paths = Vec::new();
     for entry in entries {
-        match read_link(entry.path()).and_then(|x| path.join(x).canonicalize()) {
-            Ok(p) => paths.push(p),
-            Err(_) => (),
+        match read_link(entry.path())
+            .ok()
+            .and_then(|x| make_canonical(path, x))
+        {
+            Some(p) => paths.push(p),
+            None => (),
         }
     }
     return paths;
