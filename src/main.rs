@@ -13,12 +13,12 @@ fn is_symlink(path: &Path) -> io::Result<bool> {
 
 fn dir_entries(path: &Path) -> Vec<DirEntry> {
     read_dir(path)
-        .and_then(|entries| {
+        .map(|entries| {
             let mut x: Vec<_> = entries.flatten().collect();
-            x.sort_unstable_by(|a, b| a.path().cmp(&b.path()));
-            Ok(x)
+            x.sort_unstable_by_key(|a| a.path());
+            x
         })
-        .unwrap_or_else(|_| vec![])
+        .unwrap_or_default()
 }
 
 fn make_canonical(dir: &Path, path: PathBuf) -> Option<PathBuf> {
@@ -42,12 +42,11 @@ fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
     for entry in entries {
         let p = entry.path();
         if is_symlink(&p)? {
-            match read_link(entry.path())
+            if let Some(p) = read_link(entry.path())
                 .ok()
                 .and_then(|x| make_canonical(path, x))
             {
-                Some(p) => paths.push(p.to_string_lossy().into_owned()),
-                None => (),
+                paths.push(p.to_string_lossy().into_owned())
             }
         } else if p.is_file() {
             paths.append(&mut file_paths(&p));
@@ -68,7 +67,7 @@ fn file_paths(path: &Path) -> Vec<String> {
             }
             Ok(entries)
         })
-        .unwrap_or_else(|_| vec![])
+        .unwrap_or_default()
 }
 
 fn find_paths(include_sys: bool) -> io::Result<Vec<String>> {
