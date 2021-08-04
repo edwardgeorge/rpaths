@@ -107,6 +107,6 @@ fn main() -> io::Result<()> {
         .get_matches();
     let sys = matches.is_present("system");
     let res = find_paths(sys)?;
-    println!("{}", res.join(":"));
+    print!("{}", res.join(":"));
     Ok(())
 }
