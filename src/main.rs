@@ -93,6 +93,7 @@ fn find_paths(include_sys: bool) -> io::Result<Vec<String>> {
 
 fn main() -> io::Result<()> {
     let matches = App::new("rpaths")
+        .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::with_name("system")
                 .short("s")
