@@ -100,7 +100,7 @@ fn find_paths(
     Ok(res)
 }
 
-fn main() -> io::Result<()> {
+fn main() {
     env_logger::Builder::from_env("RPATHS_LOG").init();
     let matches = App::new("rpaths")
         .version(env!("CARGO_PKG_VERSION"))
@@ -135,7 +135,12 @@ fn main() -> io::Result<()> {
         .values_of("paths-dirs")
         .map(|v| v.collect())
         .unwrap_or_default();
-    let res = find_paths(!matches.is_present("no-default"), sys, &paths)?;
-    print!("{}", res.join(":"));
-    Ok(())
+    let res = find_paths(!matches.is_present("no-default"), sys, &paths);
+    match res {
+        Ok(paths) => print!("{}", paths.join(":")),
+        Err(err) => {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        }
+    }
 }
