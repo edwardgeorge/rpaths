@@ -37,32 +37,39 @@ fn make_canonical(dir: &Path, path: PathBuf) -> Option<PathBuf> {
 }
 
 fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
+    log::info!("Processing directory: {}", path.display());
     let entries = dir_entries(path);
     let mut paths = Vec::new();
     for entry in entries {
         let p = entry.path();
+        log::info!("Found entry: {}", p.display());
         if is_symlink(&p)? {
-            if let Some(p) = read_link(entry.path())
+            if let Some(p2) = read_link(entry.path())
                 .ok()
                 .and_then(|x| make_canonical(path, x))
             {
-                paths.push(p.to_string_lossy().into_owned())
+                log::info!("+ {} is symlink to: {}", p.display(), p2.display());
+                paths.push(p2.to_string_lossy().into_owned())
             }
         } else if p.is_file() {
+            log::info!("+ {} is standard file!", p.display());
             paths.append(&mut file_paths(&p));
         } else {
+            log::info!("- ignoring {}", p.display());
         }
     }
     Ok(paths)
 }
 
 fn file_paths(path: &Path) -> Vec<String> {
+    log::info!("Looking in file {} for paths...", path.display());
     File::open(path)
         .and_then(|file| {
             let mut entries = Vec::new();
             let reader = io::BufReader::new(file);
             for line in reader.lines() {
                 let line = line?;
+                log::info!("Found entry: {}", line);
                 entries.push(line);
             }
             Ok(entries)
@@ -92,6 +99,7 @@ fn find_paths(include_sys: bool) -> io::Result<Vec<String>> {
 }
 
 fn main() -> io::Result<()> {
+    env_logger::Builder::from_env("RPATHS_LOG").init();
     let matches = App::new("rpaths")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
