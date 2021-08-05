@@ -6,6 +6,9 @@ use std::vec::Vec;
 use clap::{App, Arg};
 use expanduser::expanduser;
 
+const ENV_PATH: &str = "RPATHS_DIR";
+const ENV_LOG: &str = "RPATHS_LOG";
+
 fn is_symlink<P: AsRef<Path>>(path: P) -> io::Result<bool> {
     let ft = path.as_ref().symlink_metadata()?.file_type();
     Ok(ft.is_symlink())
@@ -81,10 +84,10 @@ fn process_path<P: AsRef<str>>(path: P) -> io::Result<Vec<String>> {
     dir_paths(expanduser(path.as_ref())?)
 }
 
-fn find_paths(
+fn find_paths<S: AsRef<str>>(
     include_default: bool,
     include_sys: bool,
-    user_paths: &[&str],
+    user_paths: &[S],
 ) -> io::Result<Vec<String>> {
     let mut res = Vec::new();
     for up in user_paths {
@@ -101,7 +104,7 @@ fn find_paths(
 }
 
 fn main() {
-    env_logger::Builder::from_env("RPATHS_LOG").init();
+    env_logger::Builder::from_env(ENV_LOG).init();
     let matches = App::new("rpaths")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
@@ -124,6 +127,13 @@ fn main() {
                 .takes_value(false),
         )
         .arg(
+            Arg::with_name("use-env")
+                .short("e")
+                .long("use-env")
+                .takes_value(false)
+                .required(false),
+        )
+        .arg(
             Arg::with_name("paths-dirs")
                 .index(1)
                 .multiple(true)
@@ -131,11 +141,21 @@ fn main() {
         )
         .get_matches();
     let sys = matches.is_present("system");
-    let paths: Vec<_> = matches
+    let mut paths: Vec<String> = matches
         .values_of("paths-dirs")
-        .map(|v| v.collect())
+        .map(|v| v.map(|v| v.to_owned()).collect())
         .unwrap_or_default();
-    let res = find_paths(!matches.is_present("no-default"), sys, &paths);
+    let no_default = matches.is_present("no-default") || matches.is_present("use-env");
+    if matches.is_present("use-env") {
+        match std::env::var("RPATHS_DIR") {
+            Ok(val) => paths.extend(val.split(':').map(|v| v.to_owned())),
+            Err(err) => {
+                eprintln!("Could not read {} environment variable: {}", ENV_PATH, err);
+                std::process::exit(1);
+            }
+        }
+    }
+    let res = find_paths(!no_default, sys, &paths);
     match res {
         Ok(paths) => print!("{}", paths.join(":")),
         Err(err) => {
