@@ -6,12 +6,12 @@ use std::vec::Vec;
 use clap::{App, Arg};
 use expanduser::expanduser;
 
-fn is_symlink(path: &Path) -> io::Result<bool> {
-    let ft = path.symlink_metadata()?.file_type();
+fn is_symlink<P: AsRef<Path>>(path: P) -> io::Result<bool> {
+    let ft = path.as_ref().symlink_metadata()?.file_type();
     Ok(ft.is_symlink())
 }
 
-fn dir_entries(path: &Path) -> Vec<DirEntry> {
+fn dir_entries<P: AsRef<Path>>(path: P) -> Vec<DirEntry> {
     read_dir(path)
         .map(|entries| {
             let mut x: Vec<_> = entries.flatten().collect();
@@ -21,7 +21,7 @@ fn dir_entries(path: &Path) -> Vec<DirEntry> {
         .unwrap_or_default()
 }
 
-fn make_canonical(dir: &Path, path: PathBuf) -> Option<PathBuf> {
+fn make_canonical<P: AsRef<Path>>(dir: P, path: PathBuf) -> Option<PathBuf> {
     if path.is_absolute() {
         if path.exists() {
             Some(path)
@@ -29,16 +29,16 @@ fn make_canonical(dir: &Path, path: PathBuf) -> Option<PathBuf> {
             None
         }
     } else {
-        match dir.join(path).canonicalize() {
+        match dir.as_ref().join(path).canonicalize() {
             Ok(p) => Some(p),
             Err(_) => None,
         }
     }
 }
 
-fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
-    log::info!("Processing directory: {}", path.display());
-    let entries = dir_entries(path);
+fn dir_paths<P: AsRef<Path>>(path: P) -> io::Result<Vec<String>> {
+    log::info!("Processing directory: {}", path.as_ref().display());
+    let entries = dir_entries(path.as_ref());
     let mut paths = Vec::new();
     for entry in entries {
         let p = entry.path();
@@ -46,7 +46,7 @@ fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
         if is_symlink(&p)? {
             if let Some(p2) = read_link(entry.path())
                 .ok()
-                .and_then(|x| make_canonical(path, x))
+                .and_then(|x| make_canonical(&path, x))
             {
                 log::info!("+ {} is symlink to: {}", p.display(), p2.display());
                 paths.push(p2.to_string_lossy().into_owned())
@@ -61,8 +61,8 @@ fn dir_paths(path: &Path) -> io::Result<Vec<String>> {
     Ok(paths)
 }
 
-fn file_paths(path: &Path) -> Vec<String> {
-    log::info!("Looking in file {} for paths...", path.display());
+fn file_paths<P: AsRef<Path>>(path: P) -> Vec<String> {
+    log::info!("Looking in file {} for paths...", path.as_ref().display());
     File::open(path)
         .and_then(|file| {
             let mut entries = Vec::new();
@@ -77,25 +77,27 @@ fn file_paths(path: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn find_paths(include_sys: bool) -> io::Result<Vec<String>> {
-    let path = expanduser("~/.paths.d")?;
-    let result = vec![
-        dir_paths(&path)?,
-        if include_sys {
-            dir_paths(Path::new("/etc/paths.d"))?
-        } else {
-            vec![]
-        },
-        if include_sys {
-            file_paths(Path::new("/etc/paths"))
-        } else {
-            vec![]
-        },
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    Ok(result)
+fn process_path<P: AsRef<str>>(path: P) -> io::Result<Vec<String>> {
+    dir_paths(expanduser(path.as_ref())?)
+}
+
+fn find_paths(
+    include_default: bool,
+    include_sys: bool,
+    user_paths: &[&str],
+) -> io::Result<Vec<String>> {
+    let mut res = Vec::new();
+    for up in user_paths {
+        res.extend(process_path(up)?);
+    }
+    if include_default {
+        res.extend(process_path("~/.paths.d")?);
+    }
+    if include_sys {
+        res.extend(dir_paths("/etc/paths.d")?);
+        res.extend(file_paths("/etc/paths"));
+    }
+    Ok(res)
 }
 
 fn main() -> io::Result<()> {
@@ -113,9 +115,27 @@ fn main() -> io::Result<()> {
                 .required(false)
                 .multiple(false),
         )
+        .arg(
+            Arg::with_name("no-default")
+                .short("n")
+                .long("no-default")
+                .required(false)
+                .requires("paths-dirs")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("paths-dirs")
+                .index(1)
+                .multiple(true)
+                .required(false),
+        )
         .get_matches();
     let sys = matches.is_present("system");
-    let res = find_paths(sys)?;
+    let paths: Vec<_> = matches
+        .values_of("paths-dirs")
+        .map(|v| v.collect())
+        .unwrap_or_default();
+    let res = find_paths(!matches.is_present("no-default"), sys, &paths)?;
     print!("{}", res.join(":"));
     Ok(())
 }
