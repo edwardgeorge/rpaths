@@ -72,8 +72,10 @@ fn file_paths<P: AsRef<Path>>(path: P) -> Vec<String> {
             let reader = io::BufReader::new(file);
             for line in reader.lines() {
                 let line = line?;
-                log::info!("Found entry: {}", line);
-                entries.push(line);
+                if Path::new(&line).exists() {
+                    log::info!("Found entry: {}", line);
+                    entries.push(line);
+                }
             }
             Ok(entries)
         })
