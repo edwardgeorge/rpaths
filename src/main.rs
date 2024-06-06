@@ -3,7 +3,7 @@ use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
 
-use clap::{App, Arg};
+use clap::{arg, command, Arg};
 use expanduser::expanduser;
 
 const ENV_PATH: &str = "RPATHS_DIR";
@@ -107,48 +107,31 @@ fn find_paths<S: AsRef<str>>(
 
 fn main() {
     env_logger::Builder::from_env(ENV_LOG).init();
-    let matches = App::new("rpaths")
-        .version(env!("CARGO_PKG_VERSION"))
+    let matches = command!()
         .arg(
-            Arg::with_name("system")
-                .short("s")
-                .long("system")
-                .help(
-                    "includes system paths. emulates behaviour of OSX path_helper, appending paths",
-                )
-                .takes_value(false)
-                .required(false)
-                .multiple(false),
+            arg!(system: -s --system "includes system paths. emulates behaviour of OSX path_helper, appending paths")
         )
         .arg(
-            Arg::with_name("no-default")
-                .short("n")
-                .long("no-default")
-                .required(false)
-                .requires("paths-dirs")
-                .takes_value(false),
+            arg!(-n --"no-default")
+            .requires("paths-dirs")
         )
         .arg(
-            Arg::with_name("use-env")
-                .short("e")
-                .long("use-env")
-                .takes_value(false)
-                .required(false),
+            arg!(-e --"use-env")
         )
         .arg(
-            Arg::with_name("paths-dirs")
-                .index(1)
-                .multiple(true)
+            Arg::new("paths-dirs")
+                .num_args(1..)
                 .required(false),
         )
         .get_matches();
-    let sys = matches.is_present("system");
+    let sys = matches.get_flag("system");
     let mut paths: Vec<String> = matches
-        .values_of("paths-dirs")
-        .map(|v| v.map(|v| v.to_owned()).collect())
-        .unwrap_or_default();
-    let no_default = matches.is_present("no-default") || matches.is_present("use-env");
-    if matches.is_present("use-env") {
+        .get_many("paths-dirs")
+        .unwrap_or_default()
+        .cloned()
+        .collect();
+    let no_default = matches.get_flag("no-default") || matches.get_flag("use-env");
+    if matches.get_flag("use-env") {
         match std::env::var("RPATHS_DIR") {
             Ok(val) => paths.extend(val.split(':').map(|v| v.to_owned())),
             Err(err) => {
